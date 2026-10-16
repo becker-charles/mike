@@ -110,4 +110,67 @@ describe("openGoogleDrivePicker", () => {
     void openGoogleDrivePicker(session).catch(() => undefined);
     expect(document.head.querySelectorAll("script")).toHaveLength(2);
   });
+
+  it("skips the script tag when gapi is already on the page", async () => {
+    const google = fakeGoogle();
+    window.gapi = { load: google.load };
+    const { openGoogleDrivePicker } = await import("./googlePicker");
+    const opened = openGoogleDrivePicker(session);
+    await vi.waitFor(() => expect(google.calls.setVisible).toEqual([true]));
+    expect(document.head.querySelector("script")).toBeNull();
+    google.respond({ action: "cancel" });
+    expect(await opened).toEqual([]);
+  });
+
+  it("rejects when the picker module fails to load, then retries the load", async () => {
+    const google = fakeGoogle();
+    const load = vi
+      .fn()
+      .mockImplementationOnce(
+        (_api: string, options: { onerror: () => void }) => options.onerror(),
+      )
+      .mockImplementation(google.load);
+    window.gapi = { load };
+    const { openGoogleDrivePicker } = await import("./googlePicker");
+    await expect(openGoogleDrivePicker(session)).rejects.toThrow(
+      "The Google Picker could not be loaded.",
+    );
+
+    const opened = openGoogleDrivePicker(session);
+    await vi.waitFor(() => expect(google.calls.setVisible).toEqual([true]));
+    google.respond({ action: "cancel" });
+    expect(await opened).toEqual([]);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects when gapi reports the picker loaded but google.picker is missing", async () => {
+    window.gapi = {
+      load: (_api, options) => {
+        window.google = {};
+        options.callback();
+      },
+    };
+    const { openGoogleDrivePicker } = await import("./googlePicker");
+    await expect(openGoogleDrivePicker(session)).rejects.toThrow(
+      "The Google Picker could not be loaded.",
+    );
+  });
+
+  it("ignores intermediate picker events and treats a pick without documents as empty", async () => {
+    const google = fakeGoogle();
+    window.gapi = { load: google.load };
+    const { openGoogleDrivePicker } = await import("./googlePicker");
+    const opened = openGoogleDrivePicker(session);
+    await vi.waitFor(() => expect(google.calls.setVisible).toEqual([true]));
+
+    // Google also fires a "loaded" action when the dialog appears.
+    google.respond({ action: "loaded" });
+    const settled = vi.fn();
+    void opened.then(settled);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+
+    google.respond({ action: "picked" });
+    expect(await opened).toEqual([]);
+  });
 });
