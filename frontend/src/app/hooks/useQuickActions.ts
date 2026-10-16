@@ -16,10 +16,10 @@ const MIGRATED_KEY = "mike.quickActions.databaseMigrated";
 async function migrateLegacyVisibility(
     actions: QuickAction[],
 ): Promise<{ actions: QuickAction[]; complete: boolean }> {
-    if (window.localStorage.getItem(MIGRATED_KEY)) {
-        return { actions, complete: true };
-    }
     try {
+        if (window.localStorage.getItem(MIGRATED_KEY)) {
+            return { actions, complete: true };
+        }
         const legacy = JSON.parse(
             window.localStorage.getItem(LEGACY_VISIBLE_KEY) ?? "null",
         ) as Record<string, unknown> | null;

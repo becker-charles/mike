@@ -204,7 +204,7 @@ export async function assignOrCopyDocument(
     return { ok: false, kind: "db_error", error };
   }
 
-  if (doc.project_id === null) {
+  if (doc.project_id === null && !doc.workflow_id && doc.library_kind !== "template") {
     // Standalone → assign project_id (and inherit the project's org).
     const targetOrg = await resolveContentOrgId(db, { projectId });
     if (!targetOrg.ok) return { ok: false, kind: "db_error", error: targetOrg.detail };
