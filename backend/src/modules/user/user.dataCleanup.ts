@@ -776,6 +776,11 @@ export async function deleteUserProjects(
     return deleteProjectsByIds(db, personalProjectIds);
 }
 
+/**
+ * Erase personal account data after checking organization ownership blockers.
+ * Retain organization work and contributed folder trees in surviving projects,
+ * detaching the departing user's attribution before their account is removed.
+ */
 export async function deleteUserAccountData(
     db: Db,
     userId: string,

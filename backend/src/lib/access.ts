@@ -834,6 +834,7 @@ export async function filterAccessibleDocumentIds(
     // Cache only within this lookup, and only container visibility. Standalone
     // documents can have independent private-access grants.
     const containerChecks = new Map<string, Promise<boolean>>();
+    /** Reuse container visibility without sharing standalone document grants. */
     const readable = (doc: DocumentAccessRow): Promise<boolean> => {
         const key = doc.project_id ? `project:${doc.project_id}`
             : doc.workflow_id ? `workflow:${doc.workflow_id}` : null;

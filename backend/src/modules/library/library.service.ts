@@ -519,6 +519,7 @@ export async function resolveLibraryFolderPath(
   return ok(data);
 }
 
+/** Create a named library folder in the authorized parent or current workspace. */
 export async function createLibraryFolder(
   db: Db,
   userId: string,
@@ -559,6 +560,7 @@ export async function createLibraryFolder(
   return ok(data);
 }
 
+/** Rename or move a library folder after checking its workspace and parent tree. */
 export async function updateLibraryFolder(
   db: Db,
   userId: string,

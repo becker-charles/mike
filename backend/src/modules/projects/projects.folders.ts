@@ -19,6 +19,7 @@ export type CreateFolderResult =
   | { ok: false; kind: "parent_not_found" }
   | { ok: false; kind: "db_error"; error: unknown };
 
+/** Create a named project folder after checking organize rights and its parent. */
 export async function createProjectFolder(
   db: Db,
   args: {
@@ -64,6 +65,7 @@ export type UpdateFolderResult =
   | { ok: false; kind: "cycle" }
   | { ok: false; kind: "not_found" };
 
+/** Rename or reparent a project folder while enforcing access and preventing cycles. */
 export async function updateProjectFolder(
   db: Db,
   args: {

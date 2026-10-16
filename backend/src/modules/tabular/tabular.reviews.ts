@@ -685,6 +685,7 @@ export type ReviewDetail = {
     documents: Record<string, unknown>[];
 };
 
+/** Load an accessible review with rows, cells and metadata limited to readable sources. */
 export async function getTabularReviewDetail(
     db: Db,
     args: { reviewId: string; userId: string; userEmail: string | undefined },
@@ -969,6 +970,11 @@ export async function revokeTabularReviewAccess(
     return { ok: true, data: null };
 }
 
+/**
+ * Apply authorized review settings while preserving sources hidden from editors.
+ * Rebuild rows only for effective document-set or grouping changes, retaining
+ * saved results for project moves and legacy duplicate-ID normalization.
+ */
 export async function updateTabularReview(
     db: Db,
     args: {
@@ -1204,9 +1210,16 @@ export async function updateTabularReview(
             updateError ?? new Error("Review update returned no data"),
         );
 
+    // Legacy selections can contain duplicates. Normalizing their representation
+    // must not rebuild rows, whose deletion cascades to the saved cell results.
+    const previousDocumentIds = new Set((existingReview.document_ids ?? []) as string[]);
+    const nextDocumentIds = new Set(
+        (updates.document_ids ?? existingReview.document_ids ?? []) as string[],
+    );
+    const documentSetChanged = previousDocumentIds.size !== nextDocumentIds.size ||
+        [...nextDocumentIds].some(id => !previousDocumentIds.has(id));
     const rowShapeChanged =
-        (Array.isArray(body.document_ids) &&
-            JSON.stringify(updates.document_ids) !== JSON.stringify(existingReview.document_ids ?? [])) ||
+        documentSetChanged ||
         (body.document_grouping != null &&
             body.document_grouping !== existingReview.document_grouping);
     try {

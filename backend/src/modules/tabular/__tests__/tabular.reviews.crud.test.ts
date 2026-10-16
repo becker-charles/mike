@@ -940,6 +940,43 @@ describe("updateTabularReview", () => {
         expect(calls.some(call => ["tabular_review_rows", "tabular_cells"].includes(call.table))).toBe(false);
     });
 
+    it.each([
+        { document_ids: ["d1", "d1", "d2"] },
+        { document_ids: ["d2", "d1", "d2"] },
+    ])("keeps saved results when normalizing legacy document IDs %j", async ({ document_ids }) => {
+        filterAccessibleDocumentIds.mockResolvedValue(["d1", "d2"]);
+        const { db, calls } = seeded({ user_id: "user-1", document_ids });
+
+        const result = await updateTabularReview(db, {
+            reviewId: "rev-1", ...WHO, body: { document_ids: ["d2", "d1"] },
+        });
+
+        expect(result.ok).toBe(true);
+        expect(calls.find(call => call.op === "update")?.payload).toMatchObject({
+            document_ids: [...new Set(document_ids)],
+        });
+        expect(calls.some(call => ["tabular_review_rows", "tabular_cells"].includes(call.table))).toBe(false);
+    });
+
+    it.each([
+        { document_ids: ["d1", "d2", "d3"] },
+        { document_ids: ["d1"] },
+        { document_ids: ["d1", "d3"] },
+        { document_grouping: "folder" },
+    ])("rebuilds rows for a changed document set or grouping: %j", async body => {
+        filterAccessibleDocumentIds.mockResolvedValue(["d1", "d2", "d3"]);
+        const { db, calls } = seeded({
+            user_id: "user-1", document_ids: ["d1", "d1", "d2"], document_grouping: "document",
+        });
+
+        const result = await updateTabularReview(db, { reviewId: "rev-1", ...WHO, body });
+
+        expect(result.ok).toBe(true);
+        expect(calls).toContainEqual(expect.objectContaining({
+            table: "tabular_review_rows", op: "delete", filters: { review_id: "rev-1" },
+        }));
+    });
+
     it("rejects a project_id that is neither null nor a non-empty string", async () => {
         const { db, calls } = makeFakeDb();
         const result = await updateTabularReview(db, {

@@ -1382,6 +1382,7 @@ export async function buildDocContext(
   return { docIndex, docStore };
 }
 
+/** Build project context and resolve message attachments with the caller's identity. */
 export async function buildProjectDocContext(
   projectId: string,
   userId: string,

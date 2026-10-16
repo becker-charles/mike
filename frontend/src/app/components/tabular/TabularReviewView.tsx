@@ -114,6 +114,7 @@ interface Props {
     projectId?: string;
 }
 
+/** Display a review grid and resume its active generation through the latest stream handler. */
 export function TRView({ reviewId, projectId }: Props) {
     const configuredModels = useConfiguredModels();
     const configuredModelIds = useMemo(

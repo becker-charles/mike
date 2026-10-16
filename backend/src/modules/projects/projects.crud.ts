@@ -226,9 +226,11 @@ export async function getProjectSummaries(
   return { ok: true, data: withMemory.rows };
 }
 
-// GET /projects?view=directory-search
-// Flat filename/project matches for the document picker. Search results do
-// not pretend that a partially loaded project tree is a complete result set.
+/**
+ * Find project and current-filename matches for the document picker.
+ * Page document matches within accessible project batches rather than searching
+ * a capped global version list or returning a partially loaded project tree.
+ */
 export async function searchProjectDirectory(
   db: Db,
   args: {
@@ -567,6 +569,7 @@ export type CreateProjectResult =
   | { ok: false; kind: "validation"; detail: string }
   | { ok: false; kind: "db_error"; error: unknown };
 
+/** Create a project with a non-blank name in a workspace the caller may use. */
 export async function createProject(
   db: Db,
   args: {
@@ -829,6 +832,7 @@ export type UpdateProjectResult =
   | { ok: false; kind: "validation"; detail: string }
   | { ok: false; kind: "db_error"; error: unknown };
 
+/** Validate project metadata and apply only changes allowed by the caller's role. */
 export async function updateProject(
   db: Db,
   args: {

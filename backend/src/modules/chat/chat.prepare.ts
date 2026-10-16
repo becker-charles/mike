@@ -88,6 +88,7 @@ export type PreparedChatStream = {
     nonce: ReturnType<typeof generateSpotlightNonce>;
 };
 
+/** Authorize and prepare a chat turn, refusing active turns before saving input. */
 export async function prepareChatStream(
     db: Db,
     args: {

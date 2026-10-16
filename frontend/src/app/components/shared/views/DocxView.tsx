@@ -85,6 +85,7 @@ export function DocxView(props: Props) {
     return <DocxViewContent key={JSON.stringify([props.documentId, props.versionId, props.displayUrl])} {...props} />;
 }
 
+/** Manage the mounted document editor and its unsaved-change close guard. */
 function DocxViewContent(props: Props) {
     const {
         documentId, versionId, displayUrl, refetchKey, cacheBytes = true,

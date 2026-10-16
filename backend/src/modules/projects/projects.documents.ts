@@ -139,6 +139,11 @@ export type AssignOrCopyResult =
   | { ok: false; kind: "copy_failed" }
   | { ok: false; kind: "db_error"; error: unknown };
 
+/**
+ * Add an owned, readable document to an authorized destination project.
+ * Assign standalone uploads; copy project, workflow and template sources so
+ * their existing containers retain the original document.
+ */
 export async function assignOrCopyDocument(
   db: Db,
   args: {
