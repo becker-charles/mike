@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    GOOGLE_DRIVE_FULL_SCOPE,
+    GOOGLE_DRIVE_READONLY_SCOPE,
     GOOGLE_DRIVE_SCOPE,
     buildGoogleDriveTools,
+    driveScopeGrants,
     executeGoogleDriveToolCall,
     getGoogleDriveStatus,
     startGoogleDriveOAuth,
@@ -93,6 +96,12 @@ describe("startGoogleDriveOAuth", () => {
         expect(url.searchParams.get("scope")).toBe(
             `openid email ${GOOGLE_DRIVE_SCOPE}`,
         );
+        // Mike asks only for per-file access, never the restricted full scope.
+        const requested = url.searchParams.get("scope")!.split(" ");
+        expect(requested).toContain(
+            "https://www.googleapis.com/auth/drive.file",
+        );
+        expect(requested).not.toContain(GOOGLE_DRIVE_FULL_SCOPE);
         expect(url.searchParams.get("code_challenge_method")).toBe("S256");
         // Without these two params Google never issues a refresh token and the
         // connection silently dies when the first access token expires.
@@ -102,6 +111,18 @@ describe("startGoogleDriveOAuth", () => {
         // Drive's pending sign-ins share the Gmail/Calendar state table.
         expect(inserts[0].table).toBe("google_workspace_oauth_states");
         expect(inserts[0].row.provider).toBe("google-drive");
+    });
+});
+
+describe("driveScopeGrants", () => {
+    it.each([
+        [GOOGLE_DRIVE_SCOPE, true, true],
+        [GOOGLE_DRIVE_FULL_SCOPE, true, true],
+        [GOOGLE_DRIVE_READONLY_SCOPE, true, false],
+        ["openid email https://www.googleapis.com/auth/gmail.modify", false, false],
+    ])("%s grants read=%s write=%s", (scope, read, write) => {
+        expect(driveScopeGrants(`openid email ${scope}`, "read")).toBe(read);
+        expect(driveScopeGrants(`openid email ${scope}`, "write")).toBe(write);
     });
 });
 

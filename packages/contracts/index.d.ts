@@ -458,7 +458,7 @@ export interface GoogleDriveStatus {
     connected: boolean;
     scope: string | null;
     enabled: boolean;
-    /** Full Drive permission was granted and connection binding is available. */
+    /** A Drive write scope (drive.file or legacy full drive) was granted and connection binding is available. */
     writeEnabled: boolean;
     requireWriteApproval: boolean;
     /** Disables write tools while preserving individual tool choices. */
