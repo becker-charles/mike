@@ -728,15 +728,12 @@ describe("Gmail and Calendar API behavior", () => {
     ).rejects.toThrow("Invalid");
     expect(fetchMock).not.toHaveBeenCalled();
   });
-  it("uses trash rather than permanent message deletion", async () => {
-    fetchMock.mockResolvedValueOnce(json({ id: "m" }));
-    await executeWorkspaceAction(
-      "gmail",
-      { tool: "gmail_trash", args: { message_id: "m" } },
-      "t",
-    );
-    expect(String(fetchMock.mock.calls[0][0])).toContain("/messages/m/trash");
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  it("limits Gmail writes to sending and drafts, which gmail.compose covers", () => {
+    expect(
+      WORKSPACE_TOOLS.filter((t) => t.provider === "gmail" && t.write).map(
+        (t) => t.name,
+      ),
+    ).toEqual(["gmail_send", "gmail_save_draft", "gmail_delete_draft"]);
   });
   it("all tools produce provider-compatible JSON schemas", () => {
     expect(WORKSPACE_TOOLS.length).toBeGreaterThan(10);
@@ -989,13 +986,6 @@ describe("additional Google service regression coverage", () => {
   it.each([
     ["gmail", "gmail_save_draft", email, "POST", "/drafts"],
     [
-      "gmail",
-      "gmail_modify_labels",
-      { message_id: "m", add_label_ids: ["UNREAD"], remove_label_ids: [] },
-      "POST",
-      "/messages/m/modify",
-    ],
-    [
       "google-calendar",
       "google_calendar_create_event",
       {
@@ -1034,29 +1024,6 @@ describe("additional Google service regression coverage", () => {
       expect(fetchMock.mock.calls[0][1]?.method).toBe(method);
     },
   );
-  it("rejects special mail-state label manipulation and overlapping label changes", async () => {
-    fetchMock.mockImplementation(async () => json({ id: "m" }));
-    await expect(
-      prepareWorkspaceAction(
-        "gmail",
-        "gmail_modify_labels",
-        { message_id: "m", add_label_ids: ["TRASH"], remove_label_ids: [] },
-        "t",
-      ),
-    ).rejects.toThrow("gmail_trash");
-    await expect(
-      prepareWorkspaceAction(
-        "gmail",
-        "gmail_modify_labels",
-        {
-          message_id: "m",
-          add_label_ids: ["INBOX"],
-          remove_label_ids: ["INBOX"],
-        },
-        "t",
-      ),
-    ).rejects.toThrow("non-overlapping");
-  });
   it("includes the selected sender and folds long Unicode subjects into valid MIME words", async () => {
     fetchMock.mockResolvedValueOnce(json({ id: "sent" }));
     await executeWorkspaceAction(
