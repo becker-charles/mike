@@ -83,7 +83,7 @@ const RUN: PlaybookRun = {
   playbookId: "pb-a",
   versionId: "pb-a-v1",
   versionNumber: 1,
-  model: "claude-opus-5",
+  model: "claude-opus-5-5",
   documentName: "contract.docx",
   reviewMode: "strict",
   status: "completed",
@@ -112,8 +112,8 @@ describe("playbooks page", () => {
       playbook("pb-b", "Playbook B"),
     ]);
     vi.mocked(getPlaybookConfiguration).mockResolvedValue({
-      availableModelIds: ["claude-opus-5"],
-      defaultModel: "claude-opus-5",
+      availableModelIds: ["claude-opus-5-5"],
+      defaultModel: "claude-opus-5-5",
     });
     vi.mocked(reviewDocumentWithPlaybook).mockResolvedValue(RUN);
     vi.mocked(createPlaybook).mockResolvedValue(playbook("pb-new", "Untitled playbook"));
@@ -223,7 +223,7 @@ describe("playbooks page", () => {
     await waitFor(() =>
       expect(importPlaybook).toHaveBeenCalledWith(
         expect.any(File),
-        "claude-opus-5",
+        "claude-opus-5-5",
         "",
         "pb-a",
       ),
