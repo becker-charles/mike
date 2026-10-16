@@ -158,6 +158,8 @@ export function googleDriveSetupInstructions(redirectUri: string): string {
         "Google Drive API (drive.googleapis.com), then set " +
         "GOOGLE_DRIVE_OAUTH_CLIENT_ID and GOOGLE_DRIVE_OAUTH_CLIENT_SECRET " +
         "(or the GOOGLE_MCP_OAUTH_* equivalents) in backend/.env and restart. " +
+        "To let users add Drive files, also enable the Google Picker API and set " +
+        "GOOGLE_DRIVE_PICKER_API_KEY and GOOGLE_DRIVE_PICKER_APP_ID. " +
         "The redirect URI is derived from API_PUBLIC_URL, so fix that first if it " +
         "is not the address browsers use to reach Mike."
     );
@@ -439,6 +441,7 @@ export async function getGoogleDriveStatus(
                 writeEnabled: false,
                 requireWriteApproval: false,
                 readOnly: false,
+                pickerConfigured: googleDrivePickerConfigured(),
                 tools: googleDriveToolList(null),
             };
         }
@@ -453,6 +456,7 @@ export async function getGoogleDriveStatus(
         writeEnabled: hasDriveWriteAccess(row),
         requireWriteApproval: row?.require_write_approval === true,
         readOnly: row?.read_only === true,
+        pickerConfigured: googleDrivePickerConfigured(),
         ...(row?.grant_id ? { grantId: row.grant_id } : {}),
         ...(row?.account_email ? { accountEmail: row.account_email } : {}),
         tools: googleDriveToolList(row),
@@ -537,6 +541,16 @@ async function getAccessToken(
     db: Db,
     expectedGrantId?: string,
 ): Promise<string> {
+    return (await getFreshAccessToken(userId, db, expectedGrantId))
+        .accessToken;
+}
+
+/** A usable access token, refreshed first when it is near expiry. */
+async function getFreshAccessToken(
+    userId: string,
+    db: Db,
+    expectedGrantId?: string,
+): Promise<{ accessToken: string; expiresAt: string }> {
     const row = await loadTokenRow(userId, db);
     if (!row?.encrypted_access_token) throw new GoogleDriveAuthRequiredError();
     if (expectedGrantId && row.grant_id !== expectedGrantId)
@@ -551,7 +565,8 @@ async function getAccessToken(
         row.access_token_iv,
         row.access_token_tag,
     );
-    if (fresh && accessToken) return accessToken;
+    if (fresh && accessToken)
+        return { accessToken, expiresAt: row.expires_at as string };
 
     const refreshToken = decryptString(
         row.encrypted_refresh_token,
@@ -601,9 +616,10 @@ async function getAccessToken(
     }
     // Compare-and-set: refresh must not recreate a disconnected connection or
     // overwrite a new grant from another tab / another Google account.
+    const patch = tokenPatch(token, row);
     const { data: updated, error } = await db
         .from("user_google_drive_tokens")
-        .update(tokenPatch(token, row))
+        .update(patch)
         .eq("user_id", userId)
         .eq("encrypted_access_token", row.encrypted_access_token)
         .select("user_id")
@@ -622,11 +638,71 @@ async function getAccessToken(
                 current.access_token_iv,
                 current.access_token_tag,
             );
-            if (access) return access;
+            if (access)
+                return {
+                    accessToken: access,
+                    expiresAt: current.expires_at as string,
+                };
         }
         throw new GoogleDriveAuthRequiredError();
     }
-    return String(token.access_token);
+    return { accessToken: String(token.access_token), expiresAt: patch.expires_at };
+}
+
+// ---------------------------------------------------------------------------
+// Google Picker session
+// ---------------------------------------------------------------------------
+
+export class GoogleDrivePickerUnavailableError extends GoogleDriveUserError {
+    code = "google_drive_picker_unavailable";
+    constructor() {
+        super("Adding files from Google Drive is not set up on this server.");
+    }
+}
+
+/**
+ * The Picker runs in the browser, so it needs a browser API key (restricted
+ * to the Picker API) and the Cloud project number that owns the OAuth client;
+ * files picked under that project number become reachable through drive.file.
+ */
+function googleDrivePickerEnv(): { developerKey?: string; appId?: string } {
+    return {
+        developerKey: process.env.GOOGLE_DRIVE_PICKER_API_KEY?.trim() || undefined,
+        appId: process.env.GOOGLE_DRIVE_PICKER_APP_ID?.trim() || undefined,
+    };
+}
+
+function googleDrivePickerConfigured(): boolean {
+    const env = googleDrivePickerEnv();
+    return !!(env.developerKey && env.appId);
+}
+
+export type GoogleDrivePickerSession =
+    import("@mike/contracts").GoogleDrivePickerSession;
+
+/**
+ * Hand the browser what the Google Picker needs. The access token is
+ * short-lived and drive.file-scoped; the refresh token never leaves the
+ * server.
+ */
+export async function createGoogleDrivePickerSession(
+    userId: string,
+    db: Db = createServerSupabase(),
+): Promise<GoogleDrivePickerSession> {
+    const { developerKey, appId } = googleDrivePickerEnv();
+    if (!developerKey || !appId) throw new GoogleDrivePickerUnavailableError();
+    const row = await loadTokenRow(userId, db);
+    if (!row?.encrypted_access_token) throw new GoogleDriveAuthRequiredError();
+    if (row.enabled === false)
+        throw new GoogleDriveUserError(
+            "Google Drive is turned off in Settings → Connectors.",
+        );
+    const { accessToken, expiresAt } = await getFreshAccessToken(
+        userId,
+        db,
+        row.grant_id,
+    );
+    return { accessToken, expiresAt, appId, developerKey };
 }
 
 // ---------------------------------------------------------------------------

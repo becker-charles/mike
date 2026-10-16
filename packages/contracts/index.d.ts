@@ -466,8 +466,20 @@ export interface GoogleDriveStatus {
     grantId?: string;
     /** Absent for connections made before the account was recorded. */
     accountEmail?: string;
+    /** The server has the browser key and app id the Google Picker needs. */
+    pickerConfigured: boolean;
     tools: NativeConnectorTool[];
     redirectUri?: string | null;
+}
+/** What the browser needs to open the Google Picker; never a refresh token. */
+export interface GoogleDrivePickerSession {
+    /** Short-lived drive.file access token. */
+    accessToken: string;
+    expiresAt: string;
+    /** Google Cloud project number; picked files are granted to this app. */
+    appId: string;
+    /** Browser API key restricted to the Google Picker API. */
+    developerKey: string;
 }
 export interface GoogleWorkspaceStatus {
     configured: boolean;

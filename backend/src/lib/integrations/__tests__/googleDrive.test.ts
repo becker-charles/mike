@@ -4,6 +4,7 @@ import {
     GOOGLE_DRIVE_READONLY_SCOPE,
     GOOGLE_DRIVE_SCOPE,
     buildGoogleDriveTools,
+    createGoogleDrivePickerSession,
     driveScopeGrants,
     executeGoogleDriveToolCall,
     getGoogleDriveStatus,
@@ -52,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     const restore = (key: string, value: string | undefined) => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
@@ -126,7 +128,56 @@ describe("driveScopeGrants", () => {
     });
 });
 
+describe("createGoogleDrivePickerSession", () => {
+    it("refreshes a near-expiry token and returns only what the Picker needs", async () => {
+        vi.stubEnv("GOOGLE_DRIVE_PICKER_API_KEY", "picker-key");
+        vi.stubEnv("GOOGLE_DRIVE_PICKER_APP_ID", "123456789");
+        const db = makeDb({
+            tokenRow: encryptedTokenRow({
+                grant_id: "grant-1",
+                // Inside the refresh leeway: the Picker must not get a token
+                // that dies while the user is still choosing files.
+                expires_at: new Date(Date.now() + 10_000).toISOString(),
+            }),
+        });
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                async () =>
+                    new Response(
+                        JSON.stringify({
+                            access_token: "access-token-2",
+                            expires_in: 3600,
+                            scope: GOOGLE_DRIVE_SCOPE,
+                        }),
+                    ),
+            ),
+        );
+        const session = await createGoogleDrivePickerSession("user-1", db);
+        expect(session).toEqual({
+            accessToken: "access-token-2",
+            expiresAt: expect.any(String),
+            appId: "123456789",
+            developerKey: "picker-key",
+        });
+        expect(Date.parse(session.expiresAt)).toBeGreaterThan(
+            Date.now() + 3000_000,
+        );
+    });
+});
+
 describe("getGoogleDriveStatus", () => {
+    it("reports whether the Google Picker is configured", async () => {
+        expect(
+            (await getGoogleDriveStatus("user-1", makeDb({}))).pickerConfigured,
+        ).toBe(false);
+        vi.stubEnv("GOOGLE_DRIVE_PICKER_API_KEY", "picker-key");
+        vi.stubEnv("GOOGLE_DRIVE_PICKER_APP_ID", "123456789");
+        expect(
+            (await getGoogleDriveStatus("user-1", makeDb({}))).pickerConfigured,
+        ).toBe(true);
+    });
+
     it("reports the schema as ready and the client as configured", async () => {
         const status = await getGoogleDriveStatus("user-1", makeDb({}));
         expect(status).toMatchObject({
