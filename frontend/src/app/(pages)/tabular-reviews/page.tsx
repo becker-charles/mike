@@ -26,7 +26,9 @@ import { userFacingApiError } from "@/app/lib/userFacingError";
 import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { useWorkspaceOrgId, useWorkspaceParam } from "@/app/contexts/WorkspaceContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { PAGE_HEADER_TITLE_CLASS } from "@/app/components/shared/pageHeaderStyles";
 import type { TableSortDirection } from "@/app/components/shared/TablePrimitive";
 import {
     type TabularReviewScope,
@@ -46,6 +48,13 @@ const REVIEW_SCOPES: { id: ReviewScope; label: string }[] = [
 const REVIEW_SCOPE_IDS = REVIEW_SCOPES.map((scope) => scope.id);
 
 export default function TabularReviewsPage() {
+    const workspace = useWorkspaceParam();
+    // Filters, selections and open dialogs belong to the workspace that
+    // supplied their projects and reviews.
+    return <TabularReviewsWorkspacePage key={workspace} workspace={workspace} />;
+}
+
+function TabularReviewsWorkspacePage({ workspace }: { workspace?: string }) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [projects, setProjects] = useState<Project[]>([]);
@@ -86,6 +95,7 @@ export default function TabularReviewsPage() {
         getReviewOwnerId,
     } = usePaginatedTabularReviews({
         projectId: projectFilter ?? undefined,
+        scopeToWorkspace: true,
         search: debouncedSearch,
         selectionKey: search,
         scope: activeScope,
@@ -118,6 +128,7 @@ export default function TabularReviewsPage() {
         () => new Set(),
     );
     const { user } = useAuth();
+    const workspaceOrgId = useWorkspaceOrgId();
     const previewEmptyStates = searchParams.get("emptyStates") === "1";
     const effectiveLoading = loading && !previewEmptyStates;
     const visibleReviews = useMemo(
@@ -127,7 +138,7 @@ export default function TabularReviewsPage() {
 
     useEffect(() => {
         let cancelled = false;
-        void listProjects()
+        void listProjects({ workspace })
             .then((loadedProjects) => {
                 if (!cancelled) setProjects(loadedProjects);
             })
@@ -137,7 +148,7 @@ export default function TabularReviewsPage() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [workspace]);
 
 
     const allSelected =
@@ -202,7 +213,11 @@ export default function TabularReviewsPage() {
                     columns_config: columnsConfig ?? [],
                     document_grouping: documentGrouping,
                     model,
-                    ...(projectId && { project_id: projectId }),
+                    // In a project the project decides where the review
+                    // belongs; on its own, the workspace it is started in.
+                    ...(projectId
+                        ? { project_id: projectId }
+                        : workspaceOrgId && { org_id: workspaceOrgId }),
                 }));
             createdReviewRef.current = review;
 
@@ -400,7 +415,7 @@ export default function TabularReviewsPage() {
                     },
                 ]}
             >
-                <h1 className="text-2xl font-medium font-serif text-gray-900">
+                <h1 className={`${PAGE_HEADER_TITLE_CLASS} text-gray-900`}>
                     Tabular Reviews
                 </h1>
             </PageHeader>

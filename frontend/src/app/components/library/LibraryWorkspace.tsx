@@ -12,6 +12,7 @@ import {
     useRef,
     useState,
 } from "react";
+import { useWorkspaceIdentity } from "@/app/hooks/useWorkspaceIdentity";
 import { useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, Plus } from "lucide-react";
 import { DocTable } from "@/app/components/documents/DocTable";
@@ -47,7 +48,9 @@ import {
     uploadLibraryDocument,
     uploadLibraryDocuments,
     type LibraryKind,
+    type LibraryScope,
 } from "@/app/lib/mikeApi";
+import { useWorkspaceParam } from "@/app/contexts/WorkspaceContext";
 import type { Document } from "@/app/components/shared/types";
 import { useDebouncedValue } from "@/app/hooks/useDebouncedValue";
 
@@ -106,6 +109,16 @@ function libraryLevelKey(parentId: string | null): string {
 const LibraryWorkspaceContext =
     createContext<LibraryWorkspaceContextValue | null>(null);
 
+/**
+ * The library of one kind in the active workspace, which is what every call
+ * on this page is about: the library is per workspace, and shows a person
+ * their own documents and folders there.
+ */
+function useScopedLibrary(): (kind: LibraryKind) => LibraryScope {
+    const workspace = useWorkspaceParam();
+    return useCallback((kind) => ({ kind, workspace }), [workspace]);
+}
+
 export function useLibraryWorkspace() {
     const context = useContext(LibraryWorkspaceContext);
     if (!context) {
@@ -121,6 +134,7 @@ export function LibraryWorkspaceProvider({
 }: {
     children: ReactNode;
 }) {
+    const scoped = useScopedLibrary();
     const [collections, setCollections] = useState<
         Record<LibraryKind, LibraryViewCollection | null>
     >({
@@ -186,7 +200,7 @@ export function LibraryWorkspaceProvider({
             try {
                 const loadedFolderIds = [...loadedFolderIdsByKind[kind]];
                 const limits = documentLimitByKind[kind];
-        const response = await getLibraryLevels(kind, [
+        const response = await getLibraryLevels(scoped(kind), [
           {
             parentId: null,
                         limit: limits[ROOT_LEVEL_KEY] ?? DOCUMENT_PAGE_SIZE,
@@ -269,7 +283,7 @@ export function LibraryWorkspaceProvider({
                 }
             }
         },
-        [loadedFolderIdsByKind, documentLimitByKind],
+        [loadedFolderIdsByKind, documentLimitByKind, scoped],
     );
 
     const loadFolderChildren = useCallback(
@@ -281,7 +295,7 @@ export function LibraryWorkspaceProvider({
 
             const request = (async () => {
                 try {
-          const children = await getLibraryFolderChildren(kind, folderId, {
+          const children = await getLibraryFolderChildren(scoped(kind), folderId, {
             limit: DOCUMENT_PAGE_SIZE,
           });
                     setCollections((prev) => {
@@ -332,7 +346,7 @@ export function LibraryWorkspaceProvider({
             folderChildrenRequestsRef.current.set(key, request);
             return request;
         },
-        [loadedFolderIdsByKind],
+        [loadedFolderIdsByKind, scoped],
     );
 
   // Fetches a fixed-size next page for one level. The old implementation
@@ -355,11 +369,11 @@ export function LibraryWorkspaceProvider({
                 try {
                     const page =
                         parentId === null
-              ? await getLibrary(kind, {
+              ? await getLibrary(scoped(kind), {
                   limit: DOCUMENT_PAGE_SIZE,
                   offset,
                 })
-                            : await getLibraryFolderChildren(kind, parentId, {
+                            : await getLibraryFolderChildren(scoped(kind), parentId, {
                   limit: DOCUMENT_PAGE_SIZE,
                   offset,
                               });
@@ -413,7 +427,7 @@ export function LibraryWorkspaceProvider({
             loadMoreDocumentsRequestsRef.current.set(requestKey, request);
             return request;
         },
-        [documentLimitByKind],
+        [documentLimitByKind, scoped],
     );
 
     const setSearchForKind = useCallback((kind: LibraryKind, value: string) => {
@@ -495,7 +509,15 @@ export function LibraryWorkspaceProvider({
 }
 
 export function LibraryWorkspaceLayout({ children }: { children: ReactNode }) {
-    return <LibraryWorkspaceProvider>{children}</LibraryWorkspaceProvider>;
+    // Keyed by workspace: switching starts the library again from nothing,
+    // so one workspace's folders and documents are never shown, or filed
+    // into, under another's name.
+    const identity = useWorkspaceIdentity();
+    return (
+        <LibraryWorkspaceProvider key={identity}>
+            {children}
+        </LibraryWorkspaceProvider>
+    );
 }
 
 export function LibraryCollectionPage({
@@ -506,6 +528,8 @@ export function LibraryCollectionPage({
     folderId?: string | null;
 }) {
     const router = useRouter();
+    const identity = useWorkspaceIdentity();
+    const scoped = useScopedLibrary();
     const {
         collections,
         loadingByKind,
@@ -568,7 +592,7 @@ export function LibraryCollectionPage({
 
         const loadRoute = folderAvailableRef.current
             ? Promise.resolve()
-            : getLibraryFolderPath(kind, folderId).then(
+            : getLibraryFolderPath(scoped(kind), folderId).then(
                   ({ folders: path }) => {
                       if (cancelled) return;
                       setFoldersForKind(kind, (current) => {
@@ -609,6 +633,7 @@ export function LibraryCollectionPage({
             cancelled = true;
         };
     }, [
+        scoped,
         collectionLoaded,
         collectionRootPath,
         folderId,
@@ -727,16 +752,16 @@ export function LibraryCollectionPage({
 
   const handleSelectAllMatching = useCallback(
     (query: DocTableQuery) =>
-      listLibraryDocumentIds(kind, {
+      listLibraryDocumentIds(scoped(kind), {
         search: query.search.trim() || undefined,
         fileType: query.fileType ?? undefined,
       }),
-    [kind],
+    [kind, scoped],
   );
 
   useEffect(() => {
     let cancelled = false;
-    void getLibraryFilterOptions(kind)
+    void getLibraryFilterOptions(scoped(kind))
       .then((options) => {
         if (!cancelled) setDocumentTypeOptions(options.fileTypes);
       })
@@ -746,7 +771,7 @@ export function LibraryCollectionPage({
     return () => {
       cancelled = true;
     };
-  }, [kind]);
+  }, [kind, scoped]);
 
   const serverQueryActive =
     debouncedSearch.trim().length > 0 ||
@@ -767,7 +792,7 @@ export function LibraryCollectionPage({
     setServerDocuments([]);
     setServerQueryLoading(true);
     setServerQueryLoadingMore(false);
-    void searchLibraryDocuments(kind, {
+    void searchLibraryDocuments(scoped(kind), {
       limit: DOCUMENT_PAGE_SIZE,
       search: debouncedSearch.trim() || undefined,
       fileType: tableQuery.fileType ?? undefined,
@@ -800,6 +825,7 @@ export function LibraryCollectionPage({
       });
     return () => controller.abort();
   }, [
+    scoped,
     debouncedSearch,
     kind,
     serverQueryActive,
@@ -821,7 +847,7 @@ export function LibraryCollectionPage({
     const offset = serverDocuments?.length ?? 0;
     setServerQueryLoadingMore(true);
     try {
-      const result = await searchLibraryDocuments(kind, {
+      const result = await searchLibraryDocuments(scoped(kind), {
         limit: DOCUMENT_PAGE_SIZE,
         offset,
         search: debouncedSearch.trim() || undefined,
@@ -849,6 +875,7 @@ export function LibraryCollectionPage({
       }
     }
   }, [
+    scoped,
     debouncedSearch,
     kind,
     serverDocuments?.length,
@@ -863,7 +890,7 @@ export function LibraryCollectionPage({
     const operations = useMemo(
         () => ({
             uploadDocument: (file: File, folderId?: string | null) =>
-                uploadLibraryDocument(kind, file, folderId),
+                uploadLibraryDocument(scoped(kind), file, folderId),
             uploadDocuments: (
                 files: Array<{
                     file: File;
@@ -873,7 +900,7 @@ export function LibraryCollectionPage({
                 options?: Parameters<typeof uploadLibraryDocuments>[2],
             ) =>
                 uploadLibraryDocuments(
-                    kind,
+                    scoped(kind),
                     files.map(({ file, folderId, clientId }) => ({
                         file,
                         folderId,
@@ -886,31 +913,31 @@ export function LibraryCollectionPage({
         setServerQueryRefreshVersion((current) => current + 1);
       },
             createFolder: (name: string, parentFolderId?: string | null) =>
-                createLibraryFolder(kind, name, parentFolderId),
+                createLibraryFolder(scoped(kind), name, parentFolderId),
             resolveFolderPath: (
                 segments: string[],
                 baseFolderId: string | null,
                 conflictResolution?: "error" | "reuse" | "rename",
             ) =>
                 resolveLibraryFolderPath(
-                    kind,
+                    scoped(kind),
                     segments,
                     baseFolderId,
                     conflictResolution,
                 ),
             renameFolder: (folderId: string, name: string) =>
-                renameLibraryFolder(kind, folderId, name),
-      deleteFolder: (folderId: string) => deleteLibraryFolder(kind, folderId),
+                renameLibraryFolder(scoped(kind), folderId, name),
+      deleteFolder: (folderId: string) => deleteLibraryFolder(scoped(kind), folderId),
             moveFolder: (folderId: string, parentFolderId: string | null) =>
-                moveLibraryFolder(kind, folderId, parentFolderId),
+                moveLibraryFolder(scoped(kind), folderId, parentFolderId),
             moveDocument: (documentId: string, folderId: string | null) =>
-                moveLibraryDocument(kind, documentId, folderId),
+                moveLibraryDocument(scoped(kind), documentId, folderId),
             renameDocument: (documentId: string, filename: string) =>
-                renameLibraryDocument(kind, documentId, filename),
+                renameLibraryDocument(scoped(kind), documentId, filename),
       bulkDeleteDocuments: (documentIds: string[]) =>
-        bulkDeleteLibraryDocuments(kind, documentIds),
+        bulkDeleteLibraryDocuments(scoped(kind), documentIds),
         }),
-        [kind, loadLibrary],
+        [kind, loadLibrary, scoped],
     );
 
     return (
@@ -1004,7 +1031,8 @@ export function LibraryCollectionPage({
                 />
                 <DocTable
                     onSelectionActionsChange={setSelectionActions}
-                    scopeKey={kind}
+                    key={`${identity}:${kind}`}
+                    scopeKey={`${identity}:${kind}`}
                     documents={collection?.documents ?? []}
                     setDocuments={setDocuments}
                     folders={collection?.folders ?? []}

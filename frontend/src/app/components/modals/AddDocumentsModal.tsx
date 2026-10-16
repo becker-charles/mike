@@ -1,5 +1,7 @@
 "use client";
 
+import { useWorkspaceIdentity } from "@/app/hooks/useWorkspaceIdentity";
+
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Upload, Loader2, X } from "lucide-react";
 import {
@@ -11,6 +13,7 @@ import {
     getProject,
     type UploadProgress,
 } from "@/app/lib/mikeApi";
+import { useDocumentWorkspace } from "@/app/contexts/WorkspaceContext";
 import type { Document, Folder } from "../shared/types";
 import { FileDirectory } from "../shared/FileDirectory";
 import type { DirectoryTab } from "../shared/useDirectoryData";
@@ -54,7 +57,7 @@ interface Props {
 
 const DIRECTORY_PAGE_SIZE = 40;
 
-export function AddDocumentsModal({
+function AddDocumentsModalForWorkspace({
     open,
     onClose,
     onSelect,
@@ -69,6 +72,9 @@ export function AddDocumentsModal({
     disabledDocumentIds,
     uploadStateId,
 }: Props) {
+    // A document uploaded on its own belongs to the workspace it is
+    // uploaded in.
+    const workspace = useDocumentWorkspace();
     const uploadSurfaceId =
         uploadStateId ??
         [
@@ -76,7 +82,8 @@ export function AddDocumentsModal({
             projectDocumentsOnly ? "project" : "all",
             initialTab,
         ].join(":");
-    const uploadStateKey = `add-documents-upload:${uploadSurfaceId}`;
+    const identity = useWorkspaceIdentity();
+    const uploadStateKey = `add-documents-upload:${identity}:${uploadSurfaceId}`;
     const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
     const [uploading, setUploading] = useRemountPersistentState(
         `${uploadStateKey}:active`,
@@ -299,6 +306,7 @@ export function AddDocumentsModal({
                 : await uploadStandaloneDocuments(
                       uploadInputs,
                       { onProgress: handleProgress },
+                      workspace,
                   );
             const uploaded = outcomes.flatMap((outcome) =>
                 outcome.status === "completed" && outcome.result
@@ -463,4 +471,9 @@ export function AddDocumentsModal({
             </div>
         </Modal>
     );
+}
+
+export function AddDocumentsModal(props: Props) {
+    const identity = useWorkspaceIdentity();
+    return <AddDocumentsModalForWorkspace key={identity} {...props} />;
 }

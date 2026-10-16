@@ -36,6 +36,19 @@ implementations used by both targets. To style a link as a pill, apply
 `pillButtonUIClassName` from `PillButtonUI.styles` directly to the link; this
 keeps the correct link semantics and is safe in server components.
 
+## Icons
+
+Use the existing skeuomorphic feature, folder, file-type, and legal-source
+icons where available; use Lucide for other controls. Web SVG assets render
+through `components/ui/svg-asset-icon.tsx` with static imports from
+`frontend/public/icons/`. Static imports produce content-hashed URLs that can
+be cached immutably; avoid literal `/icons/...` URLs and manual version queries
+for these assets. Small UI icons load eagerly so they appear with their labels.
+The app layout preloads navigation and account-menu icons during the loading
+screen, before opening a menu can trigger an image request.
+`frontend/public/_headers` preserves immutable caching for `/_next/static/*`
+on Cloudflare, whose asset server otherwise revalidates even hashed files.
+
 ## Color tokens
 
 Two families coexist. Prefer a token over a raw Tailwind palette class whenever
@@ -123,6 +136,39 @@ itself and swaps its dark-glass blades for the white ones. Anything else drawing
 brand-colored SVG should follow the same pattern rather than hard-coding a
 single palette.
 
+### User avatars
+
+`components/ui/user-avatar.tsx` renders profile photos and the monogram fallback
+for the account button, People/share rows, member pickers, organization members,
+and audit-log identities. Pass the identity's email, display name, and
+`profile_photo` from the existing authorized roster response. Table avatars use
+`size="sm"`: 16px across with 8px white serif initials. Pickers and detail views
+use the default 20px size. Loading placeholders match the table's 16px size.
+The background colour is stable and keyed to the
+normalized email, falling back to the display name. A missing or
+unreadable image restores those initials.
+
+The general email lookup returns only identity fields. New direct-share
+recipients show a monogram until their photo is available through an authorized
+roster response; organization pickers can use their existing member photos.
+Audit logs resolve photos only for actors on the authorized organization page;
+personal activity and CSV exports do not fetch photos. Affected members and
+invitation recipients prefer their current display name, falling back to the
+recorded email, which also keeps their monogram color stable. These lookups
+fetch names only for affected people on the authorized page. The Performed by
+filter searches distinct actors from the organization audit log, including
+former members, in a scrollable list of 20 people per page. Selecting a person
+filters by their ID and preserves that filter in CSV exports.
+
+Settings > Profile offers upload and a blue Edit button for saved images. Profile photos
+and organization logos share `ImageCropModal`: both support dragging, keyboard
+positioning, zoom, preview, and explicit saving. Edit reopens the saved image.
+The footer places blue Save on the right and red Remove on the left.
+Save stays disabled until the image or framing changes.
+Photos use a circular preview
+and a crop that fills it. PNG, JPEG, and WebP source files up to 10 MB are
+rendered to a 256px PNG before upload; the API limits stored images to 512 KB.
+
 ## Typography
 
 Both faces are loaded with `next/font/google` in `frontend/src/app/layout.tsx`
@@ -140,9 +186,14 @@ The Word add-in supplies the same two variables from
 De facto type scale in the app chrome, most to least common: `text-xs` (dense
 table and control text — the default for most chrome), `text-sm` (body copy,
 normal-size buttons), `text-[10px]` (badges, superscript citations),
-`text-2xl font-serif` (display headings and empty states). There is no separate
-heading component; use `EmptyState` for empty-state headings and `PageHeader`
-for page titles so the display style stays in one place.
+`text-2xl font-serif` (display headings and empty states), `text-xl font-serif`
+(page titles and breadcrumbs). There is no separate heading component; use
+`EmptyState` for empty-state headings and `PageHeader` for page titles so the
+display style stays in one place. A plain page title is an `<h1>` passed as
+`PageHeader`'s children with `PAGE_HEADER_TITLE_CLASS` (from
+`shared/pageHeaderStyles.ts`), which is also what its breadcrumbs use. `PAGE_HEADER_ROW_CLASS` is what
+keeps that title on the line of the sidebar's logo text. The settings areas
+(`SettingsShell`) have a larger display title of their own, `text-3xl`.
 
 ## Spacing and radius
 
@@ -207,6 +258,44 @@ neighbours, never by clipping content:
   primary chat renders, at full width, and the action that opens the side
   chat is not offered. The IDE is a desktop workspace and has no such gate.
 
+The IDE's Open project picker and project switcher list projects in the active
+workspace that the user created or was directly added to, whether public or
+private. Public visibility alone does not make someone a participant. Switching
+workspace clears the picker cache and selection. Inherited organization permissions and
+audited private-content access do not put projects in this picker. The backend
+applies this participation filter to its already-authorized project list.
+The picker and FileDirectory share the compact native `SelectionCheckbox` in
+`components/ui/selection-checkbox.tsx`, including its mixed and disabled states.
+
+The app sidebar's History combines assistant chats and tabular reviews from
+the active workspace, including reviews inside projects. Both sources are
+fetched by last update and merged newest first. Older rows stay buffered until
+both paginated sources reach them, so fetching another page does not reveal
+newer items below older ones. Review rows use the tabular-review SVG icon and
+open the review's project or standalone route. Project reviews prefix their
+title with the project name. Project prefixes and chat Shared labels use the
+same muted `text-gray-400` treatment. Edits and generation starts/completions
+advance review activity and promote it in History; lease heartbeats do not.
+Running reviews show a spinner, including after navigating away. A review
+that finishes successfully while elsewhere shows a tick using the Excel SVG's
+green gradient until
+opened, matching unread chat completion. Failed, stopped, and incomplete
+reviews do not get the completion icon. Status polling reads small authorized
+snapshots only for running reviews; it never downloads their documents.
+Activity refreshes keep the loaded History rows and pagination visible; only
+the affected review's icon changes. A workspace change still clears the old list.
+Review overview project filters, create choices and move destinations also stay
+within their workspace; selecting a project filter must not disable workspace
+scoping. A workspace switch resets those filters and dialogs. Detail pages opened
+by link follow the item's own workspace, with project children inheriting theirs.
+Late list pages and chat creations must not populate a newly selected workspace.
+Chat Share, Rename and Delete actions are visible only to owners. Directly shared
+standalone chats offer Leave to viewers and editors; project chats never offer
+Leave because their access comes from project membership. Audited organization
+access is not a direct sharing grant and does not offer Leave.
+When opening a chat, missing workspace metadata means the detail is still loading;
+only an explicit null organization means Personal. Prefer the matching chat detail
+over a lightweight History row for workspace and attachment scope.
 
 ## Elevation and the glass surface
 
@@ -319,9 +408,9 @@ keep their own spacing and should not receive this attribute.
 | --- | --- | --- |
 | `PillButtonUI` | `shared/ui` | Primary action button (`tone`: black/white/blue/danger). |
 | `TextButtonUI` | `shared/ui` | Background-free actions, with optional icons and loading state. Use `textButtonUIClassName` from `TextButtonUI.styles` for links. No background, border, or shadow; hover changes text color. |
-| `TabPillButtonUI` | `shared/ui` | Segmented filter/tab pills. Pass `active` to get `aria-pressed`. |
+| `TabPillButtonUI` | `shared/ui` | Segmented filter/tab pills. Pass `active` to get `aria-pressed`. Resting text matches PageHeader actions (`text-gray-500`), with `text-gray-900` on hover or selection. |
 | `GlassIconButtonUI` | `shared/ui` | Circular glass icon button — modal close, panel dismiss. Requires `aria-label`. |
-| `CloseButton` | `shared/ui` | The small white ✕ that dismisses a modal, side panel, toast, or `WarningPopup`. `size`: `sm` for side panels, `md` for modals and notices. |
+| `CloseButton` | `shared/ui` | The small white ✕ that dismisses a modal, side panel, confirmation, toast, or `WarningPopup`. `size`: `sm` for side panels, confirmations, and notices; `md` for modals. |
 | `GlassCardUI` | `shared/ui` | Canonical liquid-glass card surface. |
 | `TextSlabUI` | `shared/ui` | Inset slab holding quoted or proposed text inside a card — citation quotes, tracked-change diffs, and their loading/empty states. Owns shape, padding, and fill; the caller owns typography. |
 | `ToggleSwitchUI` | `shared/ui` | `role="switch"` toggle with an optional text label. |
@@ -410,6 +499,10 @@ wrappers; `WarningPopup.test.tsx` fails if a popup and an error toast stop
 rendering the same card. The card's dismiss control is the shared
 `CloseButton`.
 
+The title, message and supplementary content share one text column beside
+the icon. Callers should not add their own left padding to supplementary
+content.
+
 Both appear in one column at the top centre of the page. `ToastViewportUI`
 owns that column, and a `WarningPopup` renders into it, so a popup and a
 toast stack instead of covering each other.
@@ -429,9 +522,12 @@ its own (the API client, a stream callback, the offline listener) calls
 `notifyError`; `AppToasts` draws what it raises with `WarningPopup`,
 including any Retry and Contact support actions.
 
-Every button or link in a notice's action row is a small black pill:
-`WarningPopup`'s `primaryAction`, a toast's actions, and Contact support.
-Use `noticeActionClassName()` for a link that has to look like one.
+No two actions on one notice share a look. The last action in the row is the
+primary one and is a black pill (`WarningPopup`'s `primaryAction` always
+is); the one before it is a white pill; any further action is plain text.
+Contact support comes first in the row, so it is black only when it is the
+sole action. Style a custom action with
+`noticeActionClassName(noticeActionEmphasis(index, count))`.
 
 Use a **toast** only for a short confirmation ("Changes saved") or
 information.
