@@ -56,6 +56,7 @@ import {
 import { listProjectsPage } from "@/app/lib/mikeApi";
 import { notifyError } from "@/app/lib/userFacingError";
 import { useAssignLatest } from "@/app/hooks/useLatestRef";
+import { ListChecks } from "lucide-react";
 import type { Project } from "@/app/components/shared/types";
 import { cn } from "@/app/lib/utils";
 import { useAssistantHistoryStatuses } from "@/app/hooks/useAssistantHistoryStatuses";
@@ -82,6 +83,7 @@ const NAV_ITEMS = [
         icon: TabularReviewSkeuoIcon,
     },
     { href: "/workflows", label: "Workflows", icon: WorkflowSkeuoIcon },
+    { href: "/playbooks", label: "Playbooks", icon: ListChecks },
 ];
 
 const RECENT_PROJECT_PAGE_SIZE = 10;
