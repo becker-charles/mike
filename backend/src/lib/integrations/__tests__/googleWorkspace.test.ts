@@ -140,6 +140,14 @@ describe("Google Workspace opt-in and OAuth", () => {
       );
     },
   );
+  it("requests only the least-privilege Gmail scopes", () => {
+    expect(requestedScopes("gmail")).toEqual([
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.compose",
+    ]);
+  });
   it("stores selected account identity separately from the Mike identity and encrypts secrets", async () => {
     const s = await connected();
     const status = await workspaceStatus(s.db, "u1", "gmail");
@@ -736,7 +744,17 @@ describe("Gmail and Calendar API behavior", () => {
 });
 
 describe("additional Google service regression coverage", () => {
-  it("records write access from the scopes Google granted", async () => {
+  const gmailScope = (name: string) =>
+    `https://www.googleapis.com/auth/gmail.${name}`;
+  it.each([
+    ["a legacy gmail.modify grant", gmailScope("modify"), true],
+    [
+      "gmail.readonly with gmail.compose",
+      `${gmailScope("readonly")} ${gmailScope("compose")}`,
+      true,
+    ],
+    ["gmail.readonly alone", gmailScope("readonly"), false],
+  ])("records write access from %s", async (_label, scope, writeEnabled) => {
     const s = workspaceDb();
     const start = await startWorkspaceOAuth(
       s.db,
@@ -746,12 +764,7 @@ describe("additional Google service regression coverage", () => {
     );
     fetchMock
       .mockResolvedValueOnce(
-        json({
-          access_token: "a",
-          refresh_token: "r",
-          expires_in: 3600,
-          scope: "https://www.googleapis.com/auth/gmail.modify",
-        }),
+        json({ access_token: "a", refresh_token: "r", expires_in: 3600, scope }),
       )
       .mockResolvedValueOnce(
         json({
@@ -768,11 +781,13 @@ describe("additional Google service regression coverage", () => {
       "code",
     );
     expect((await workspaceStatus(s.db, "u1", "gmail")).writeEnabled).toBe(
-      true,
+      writeEnabled,
     );
     expect(
-      JSON.stringify(await buildGoogleWorkspaceTools("u1", s.db)),
-    ).toContain("gmail_send");
+      JSON.stringify(await buildGoogleWorkspaceTools("u1", s.db)).includes(
+        "gmail_send",
+      ),
+    ).toBe(writeEnabled);
   });
   it("uses the exact encrypted PKCE verifier and redirect, and rejects an unverified account", async () => {
     const s = workspaceDb();
