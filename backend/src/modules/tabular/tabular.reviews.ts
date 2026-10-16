@@ -524,6 +524,7 @@ export type CreateReviewInput = {
     model?: unknown;
 };
 
+/** Create an authorized review, returning lookup failures before any review is saved. */
 export async function createTabularReview(
     db: Db,
     input: CreateReviewInput,
@@ -590,9 +591,14 @@ export async function createTabularReview(
         project_id ? projectOrgId : standaloneOrgId,
     );
     if (!selectedModel.ok) return modelFailure(selectedModel);
-    const allowedDocumentIds = Array.isArray(document_ids)
-        ? await filterAccessibleDocumentIds(document_ids, userId, userEmail, db)
-        : [];
+    let allowedDocumentIds: string[];
+    try {
+        allowedDocumentIds = Array.isArray(document_ids)
+            ? await filterAccessibleDocumentIds(document_ids, userId, userEmail, db)
+            : [];
+    } catch (error) {
+        return internalFailure(error);
+    }
     const grouping = normalizeGrouping(document_grouping);
     // Project reviews inherit their project's organization as tenant
     // provenance.
@@ -1077,12 +1083,17 @@ export async function updateTabularReview(
         if (requestedIds.some((id) => typeof id !== "string"))
             return failure("validation", "document_ids must contain only strings");
         const existingIds = (existingReview.document_ids ?? []) as string[];
-        const readableIds = new Set(await filterAccessibleDocumentIds(
-            [...new Set([...existingIds, ...requestedIds as string[]])],
-            userId,
-            userEmail,
-            db,
-        ));
+        let readableIds: Set<string>;
+        try {
+            readableIds = new Set(await filterAccessibleDocumentIds(
+                [...new Set([...existingIds, ...requestedIds as string[]])],
+                userId,
+                userEmail,
+                db,
+            ));
+        } catch (error) {
+            return internalFailure(error);
+        }
         // Preserve sources hidden from a collaborating editor, even when the
         // picker only submits the documents that editor can see.
         updates.document_ids = [...new Set([

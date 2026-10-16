@@ -141,6 +141,16 @@ beforeEach(() => {
 });
 
 describe("createTabularReview", () => {
+    it("returns an internal failure without inserting a review when document access lookup fails", async () => {
+        const error = new Error("Document access lookup failed");
+        filterAccessibleDocumentIds.mockRejectedValueOnce(error);
+        const { db, calls } = makeFakeDb();
+        await expect(createTabularReview(db, {
+            ...WHO, document_ids: ["doc-1"], columns_config: [], model: "claude-sonnet-5",
+        })).resolves.toEqual({ ok: false, kind: "error", error });
+        expect(calls.some(call => call.op === "insert")).toBe(false);
+    });
+
     it("rejects a missing model before touching the database", async () => {
         const { db, calls } = makeFakeDb();
         const result = await createTabularReview(db, {
@@ -922,6 +932,16 @@ describe("updateTabularReview", () => {
                 ],
             },
         });
+
+    it("returns an internal failure without changing the review when document access lookup fails", async () => {
+        const error = new Error("Document access lookup failed");
+        filterAccessibleDocumentIds.mockRejectedValueOnce(error);
+        const { db, calls } = seeded({ user_id: "user-1", document_ids: ["doc-1"] });
+        await expect(updateTabularReview(db, {
+            reviewId: "rev-1", ...WHO, body: { document_ids: ["doc-1", "doc-2"] },
+        })).resolves.toEqual({ ok: false, kind: "error", error });
+        expect(calls.every(call => call.op === "select")).toBe(true);
+    });
 
     it.each([null, "proj-2"])("keeps rows and cell results on a move to %s", async project_id => {
         const { db, calls } = seeded({ user_id: "user-1", project_id: "proj-1", document_ids: ["d1"] });
