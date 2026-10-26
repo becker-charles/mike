@@ -48,8 +48,10 @@ const WEBRTC_GUARD = inlineScript(
 
 // Each authored script gets its own block, so a top-level `const top` or
 // `let name` cannot collide with the window's own globals and stop the page.
+// The end tag is matched as the browser reads it: `</script` followed by
+// whitespace, a slash or `>`, with anything up to the `>` ignored.
 const scopeAuthoredScripts = (html: string) =>
-  html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (tag, attrs: string, code: string) =>
+  html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi, (tag, attrs: string, code: string) =>
     /\b(src|type)\s*=/i.test(attrs) && !/\btype\s*=\s*["']?(text\/)?javascript\b/i.test(attrs)
       ? tag
       : `<script${attrs}>{\n${code}\n}</script>`,

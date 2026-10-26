@@ -32,6 +32,15 @@ describe("composeVisualDocument", () => {
     expect(doc).toContain(`<script type="application/json" id="d">{"a":1}</script>`);
   });
 
+  it("closes a scoped script at an end tag the browser accepts, not only at </script>", () => {
+    const doc = composeVisualDocument(
+      visual(`<script>const a = 1;</script ><p>x</p><script>const b = 2;</script\t>`),
+    );
+    expect(doc).toContain(
+      "<script>{\nconst a = 1;\n}</script><p>x</p><script>{\nconst b = 2;\n}</script>",
+    );
+  });
+
   it("references nothing outside the document", () => {
     const doc = composeVisualDocument(visual("<p>hello</p>"));
     expect(doc).not.toMatch(/<(script|link|img|iframe)[^>]+(src|href)=/i);
