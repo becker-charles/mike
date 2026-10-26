@@ -12,6 +12,7 @@
     "start": "node --enable-source-maps dist/index.js",
     "sync:workflows": "node dist/jobs/syncWorkflows.js",
     "pretest": "node scripts/build-visual-kit.mjs",
+    "pretest:coverage": "node scripts/build-visual-kit.mjs",
     "test": "vitest run",
     "test:stack": "bash scripts/test-stack.sh",
     "test:coverage": "vitest run --coverage",
